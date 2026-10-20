@@ -1,18 +1,37 @@
 # Quiet timeline
 
-Never hides reasoning ("Thinking") rows. Paseo draws them as it does natively, so you
-can always see that a model is thinking and verify that a thinking level is applied.
+Groups each run of thinking and tool calls into one row, so a long agent run reads
+as the assistant's messages with one activity row between them.
 
-An earlier version removed every reasoning row so tool groups would merge into one
-Overview row. That erased the only client-visible evidence of reasoning and was
-removed. Do not reintroduce a transformer that returns `{ items: [] }` for
-`reasoning`.
+- **Collapsed**, the row names everything that happened, thinking included:
+  "Thought 2 times, ran 3 commands, and read 1 file". While the agent works it shows
+  a "working" dot and the latest thinking or tool call, so you can watch reasoning
+  stream without opening anything.
+- **One tap** opens the run in order: every thinking block in full, and every tool
+  call with its command or target and its output. Runs with more than 60 tool calls
+  show the newest 60 first, with a button for earlier ones. Every thinking block is
+  always shown.
 
-Thinking cannot be folded into Paseo's "ran N commands" group from a plugin on
-0.12.0. The host ends a group at the first non-tool item, and an expanded group
-renders only tool calls. That needs a Paseo change. Until then, use Settings →
-General → Tool call display → Full detail to see every tool call and thinking row
-inline, and Always expand reasoning to open the Thinking rows.
+Messages, todo lists, errors, plan approvals and `speak` calls end a run, as they
+do in Paseo's own Summary display.
 
-The plugin only changes what the client draws, and currently changes nothing. It reads
-no agent data, sends nothing, and does not alter stored history.
+## How it works
+
+Paseo's Summary groups stop at the first reasoning item and only list tool calls,
+so the plugin draws the whole run itself. It keeps a read-only mirror of each open
+agent's timeline over the plugin API, and decides for each reasoning or tool call
+item whether to draw the run's row, hide the item because that row already shows
+it, or draw the item on its own.
+
+Nothing is dropped without being drawn. Until an agent's mirror has loaded, or if
+it fails, items are drawn on their own, so thinking stays visible.
+
+The plugin only changes what the client draws. It never writes agent data, and it
+does not alter stored history: disabling it brings back Paseo's own rows.
+
+## Checks
+
+- `npm run typecheck` and `npm test`: grouping, live updates, older history, and
+  the rule that every hidden item belongs to a drawn row.
+- In Paseo, a turn with thinking and tool calls shows one row per run whose summary
+  starts with "Thought", and tapping it shows the thinking text and each call.
