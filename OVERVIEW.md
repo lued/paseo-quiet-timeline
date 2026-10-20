@@ -1,14 +1,18 @@
 # Quiet timeline
 
-Hides the reasoning ("Thinking") rows Paseo draws between tool calls in an agent
-timeline, so a long agent run reads as the assistant's messages and its grouped
-tool activity instead of alternating `Thinking` and `ran N commands` lines.
+Never hides reasoning ("Thinking") rows. Paseo draws them as it does natively, so you
+can always see that a model is thinking and verify that a thinking level is applied.
 
-Paseo builds the Overview (Summary) tool-call groups after timeline transformers
-run, so removing reasoning entries also merges tool groups that a reasoning block
-used to separate. Set Settings → General → Tool call display to Summary to get the
-grouped rows. In Full detail every tool call still gets its own row.
+An earlier version removed every reasoning row so tool groups would merge into one
+Overview row. That erased the only client-visible evidence of reasoning and was
+removed. Do not reintroduce a transformer that returns `{ items: [] }` for
+`reasoning`.
 
-The plugin only changes what the client draws. It reads no agent data, sends
-nothing, and does not alter stored history: reasoning is still recorded and comes
-back if the plugin is disabled.
+Thinking cannot be folded into Paseo's "ran N commands" group from a plugin on
+0.12.0. The host ends a group at the first non-tool item, and an expanded group
+renders only tool calls. That needs a Paseo change. Until then, use Settings →
+General → Tool call display → Full detail to see every tool call and thinking row
+inline, and Always expand reasoning to open the Thinking rows.
+
+The plugin only changes what the client draws, and currently changes nothing. It reads
+no agent data, sends nothing, and does not alter stored history.
