@@ -59,6 +59,30 @@ test("speak and plan calls break a run; ExitPlanMode is skipped like Paseo does"
   assert.deepEqual(runs.map((run) => run.members.map((member) => member.key)), [["t:c1"], ["t:c2", "t:c3"]]);
 });
 
+test("a render card breaks the run instead of being counted as a grouped tool", () => {
+  const render = {
+    type: "tool_call",
+    callId: "r1",
+    name: "codemode",
+    status: "completed",
+    error: null,
+    detail: {
+      type: "unknown",
+      input: { code: "tools.mcp__html_render__html_render({...})" },
+      output: {
+        content: [{ type: "text", text: "published" }],
+        details: { calls: [{ name: "mcp__html_render__html_render", status: "ok" }] },
+      },
+    },
+  } as never;
+  const mirror = createMirror("a1");
+  applyItem(mirror, shell("c1"), 1, false);
+  applyItem(mirror, render, 2, false);
+  applyItem(mirror, shell("c2"), 3, false);
+  const runs = [...indexMirror(mirror).runs.values()];
+  assert.deepEqual(runs.map((run) => run.members.map((member) => member.key)), [["t:c1"], ["t:c2"]]);
+});
+
 test("reasoning match accepts either text as prefix and refuses ambiguity", () => {
   const candidates = [
     { agentId: "a", key: "r:a:1", runId: "r:a:1", order: 1, norm: "Iwillreadthefile" },

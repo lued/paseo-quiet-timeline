@@ -62,12 +62,35 @@ function isHiddenTool(item: ToolItem): boolean {
   return item.name === "ExitPlanMode" || (item.name === "plan_approval" && item.status === "running");
 }
 
+/**
+ * A tool call that another plugin turns into a card. The html-render plugin
+ * replaces the persisted row with a report card; folding the same call into an
+ * activity group would count and show a call that is no longer there. Break the
+ * run so the card stands on its own.
+ */
+function isRenderCardTool(item: ToolItem): boolean {
+  const name = item.name.trim().toLowerCase();
+  const last = name.split(/__|\./).pop() ?? "";
+  if (last === "html_render" || last === "html-render") return true;
+  if (name !== "codemode") return false;
+  const output = (item.detail as { output?: { details?: { calls?: unknown } } }).output;
+  const calls = output?.details?.calls ?? (item.detail as { details?: { calls?: unknown } }).details?.calls;
+  return Array.isArray(calls) && calls.some((call) => {
+    if (typeof call !== "object" || call === null) return false;
+    const nested = (call as { name?: unknown }).name;
+    if (typeof nested !== "string") return false;
+    const nestedLast = nested.trim().split(/__|\./).pop()?.toLowerCase() ?? "";
+    return nestedLast === "html_render" || nestedLast === "html-render";
+  });
+}
+
 /** Tool calls Paseo never groups; they break a run like any other card. */
 function isBreakingTool(item: ToolItem): boolean {
   return (
     item.detail.type === "plan" ||
     item.name.trim().toLowerCase() === "speak" ||
-    item.name === "plan_approval"
+    item.name === "plan_approval" ||
+    isRenderCardTool(item)
   );
 }
 
