@@ -340,38 +340,101 @@ function firstLine(text: string, max = 140): string {
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
 }
 
-/** One-line title for a tool call. */
-export function describeTool(item: ToolItem): string {
+function humanizeToolName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return name;
+  if (/[:./]/.test(trimmed) || trimmed.includes("__")) return trimmed;
+  return trimmed
+    .replace(/[._-]+/g, " ")
+    .split(" ")
+    .filter((segment) => segment.length > 0)
+    .join(" ")
+    .toLowerCase()
+    .replace(/^./, (character) => character.toUpperCase());
+}
+
+function stripCwdPrefix(filePath: string, cwd?: string): string {
+  if (!cwd || !filePath) return filePath;
+  const normalizedCwd = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedPath = filePath.replace(/\\/g, "/");
+  if (normalizedPath.startsWith(`${normalizedCwd}/`)) return normalizedPath.slice(normalizedCwd.length + 1);
+  if (normalizedPath === normalizedCwd) return ".";
+  return filePath;
+}
+
+/** Label and summary the way Paseo's own tool call rows show them. */
+export function toolDisplay(item: ToolItem, cwd?: string): { displayName: string; summary?: string } {
   const detail: ToolCallDetail = item.detail;
+  const lowerName = item.name.trim().toLowerCase();
+  if (lowerName === "task" && detail.type === "unknown") return { displayName: "Task" };
+  if (lowerName === "terminal") {
+    return { displayName: "Terminal", ...(detail.type === "plain_text" && detail.label ? { summary: detail.label } : {}) };
+  }
   switch (detail.type) {
     case "shell":
-      return `$ ${firstLine(detail.command, 160)}`;
+      return { displayName: "Shell", summary: detail.command };
     case "read":
-      return `Read ${detail.filePath}`;
+      return { displayName: "Read", summary: stripCwdPrefix(detail.filePath, cwd) };
     case "edit":
-      return `Edit ${detail.filePath}`;
+      return { displayName: "Edit", summary: stripCwdPrefix(detail.filePath, cwd) };
     case "write":
-      return `Write ${detail.filePath}`;
+      return { displayName: "Write", summary: stripCwdPrefix(detail.filePath, cwd) };
     case "search":
-      return `Search ${firstLine(detail.query)}`;
+      return { displayName: "Search", summary: detail.query };
     case "fetch":
-      return `Fetch ${detail.url}`;
-    case "sub_agent":
-      return `Agent ${detail.subAgentType ?? ""} ${firstLine(detail.description ?? "")}`.replace(/\s+/g, " ").trim();
-    case "plain_text":
-      return detail.label ?? item.name;
+      return { displayName: "Fetch", summary: detail.url };
     case "worktree_setup":
-      return `Set up worktree ${detail.branchName}`;
+      return { displayName: "Worktree setup", summary: detail.branchName };
+    case "sub_agent":
+      return { displayName: detail.subAgentType || "Task", ...(detail.description ? { summary: detail.description } : {}) };
+    case "plain_text":
+      return { displayName: humanizeToolName(item.name), ...(detail.label ? { summary: detail.label } : {}) };
+    case "plan":
+      return { displayName: "Plan" };
     default:
-      return item.name;
+      return { displayName: humanizeToolName(item.name) };
   }
+}
+
+const DETAIL_ICONS: Record<ToolCallDetail["type"], string> = {
+  shell: "SquareTerminal",
+  read: "Eye",
+  edit: "Pencil",
+  write: "Pencil",
+  search: "Search",
+  fetch: "Search",
+  worktree_setup: "SquareTerminal",
+  sub_agent: "Bot",
+  plain_text: "Wrench",
+  plan: "Brain",
+  unknown: "Wrench",
+};
+
+function pascalIcon(name: string): string {
+  return name.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("");
+}
+
+/** Lucide icon name Paseo uses for this tool call. */
+export function toolIconName(item: ToolItem): string {
+  const lowerName = item.name.trim().toLowerCase();
+  if (item.detail.type === "plain_text" && item.detail.icon) return pascalIcon(item.detail.icon);
+  if (lowerName === "speak") return "MicVocal";
+  if (isPaseoTool(item.name)) return "Sparkles";
+  if (lowerName === "task") return "Bot";
+  return DETAIL_ICONS[item.detail.type] ?? "Wrench";
+}
+
+/** One-line title for a tool call. */
+export function describeTool(item: ToolItem, cwd?: string): string {
+  const display = toolDisplay(item, cwd);
+  return display.summary ? `${display.displayName} ${firstLine(display.summary, 160)}` : display.displayName;
 }
 
 /** Short line for the collapsed row so live activity is visible without a click. */
 export function describeLatest(run: Run): string | null {
   const last = run.members.at(-1);
   if (!last) return null;
-  if (last.kind === "reasoning") return `Thinking: ${firstLine(last.text)}`;
+  if (last.kind === "reasoning") return firstLine(last.text);
   return describeTool(last.item);
 }
 

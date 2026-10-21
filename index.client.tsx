@@ -72,7 +72,15 @@ export default function contribute(client: PluginClientContext) {
   register();
 
   function ActivityGroup(props: PluginTimelineItemProps<z.output<typeof groupSchema>>) {
-    return <GroupRow store={store} agentId={props.agentId} runId={props.item.data.runId} theme={props.theme} />;
+    return (
+      <GroupRow
+        store={store}
+        agentId={props.agentId}
+        runId={props.item.data.runId}
+        theme={props.theme}
+        compact={props.layout.compact}
+      />
+    );
   }
   function ActivityItem(props: PluginTimelineItemProps<z.output<typeof itemSchema>>) {
     return <ItemRow store={store} agentId={props.agentId} item={props.item.data.item} theme={props.theme} />;

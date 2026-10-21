@@ -3,13 +3,13 @@
 Groups each run of thinking and tool calls into one row, so a long agent run reads
 as the assistant's messages with one activity row between them.
 
-- **Collapsed**, the row names everything that happened, thinking included:
-  "Thought 2 times, ran 3 commands, and read 1 file". While the agent works it shows
-  a "working" dot and the latest thinking or tool call, so you can watch reasoning
-  stream without opening anything.
-- **One tap** opens the run in order: every thinking block in full, and every tool
-  call with its command or target and its output. Runs with more than 60 tool calls
-  show the newest 60 first, with a button for earlier ones. Every thinking block is
+- **Collapsed**, it is a plain grey line drawn like Paseo's own tool call rows, and
+  it names the thinking: "Thought 2 times, ran 3 commands, and read 1 file". While
+  the agent works, the line also shows the latest thinking or tool call.
+- **One tap** opens the run in order, inline on desktop and in a sheet on phones,
+  the way Paseo's Summary groups open. Thinking shows as grey text; each tool call
+  is a grey line you can tap for its output. Runs with more than 60 tool calls show
+  the newest 60 first, with a button for earlier ones. Every thinking block is
   always shown.
 
 Messages, todo lists, errors, plan approvals and `speak` calls end a run, as they

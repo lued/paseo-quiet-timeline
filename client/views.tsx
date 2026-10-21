@@ -1,32 +1,47 @@
 import type { PluginTheme } from "@getpaseo/plugin";
+import { useAgent } from "@getpaseo/plugin/client";
+import { Icon, Modal } from "@getpaseo/plugin/client/react-native";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import type { TextStyle, ViewStyle } from "react-native";
 import {
   describeLatest,
   describeSummary,
-  describeTool,
   summarizeRun,
+  toolDisplay,
+  toolIconName,
   visibleMembers,
   type Member,
   type ToolItem,
 } from "../shared/activity.ts";
 import type { ActivityStore } from "./store.ts";
 
+/*
+ * Rows copy Paseo's own ExpandableBadge (components/message.tsx, 0.12.0): a
+ * borderless grey line with a 12px icon, a 14px label and a secondary label.
+ * Hover or expand turns the text foreground and swaps the icon for a chevron;
+ * only an expanded row gets the surface tint. On compact layouts a group opens a
+ * sheet, as Paseo's Summary groups do.
+ */
+
 type Colors = PluginTheme["colors"];
 
-// Same stack Paseo uses for code.
 const MONO = Platform.select({
   ios: "ui-monospace",
   web: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
   default: "monospace",
 });
+const isWeb = Platform.OS === "web";
+const GROUP_MAX_HEIGHT = 400;
+const DETAIL_MAX_HEIGHT = 200;
 const MAX_BODY_LINES = 80;
+const MAX_BODY_CHARS = 8_000;
 /** Tool calls drawn at first in an expanded run; every thinking block is always drawn. */
 export const VISIBLE_TOOL_CALLS = 60;
 const MORE_TOOL_CALLS = 200;
-const MAX_BODY_CHARS = 8_000;
+/** Badge padding (8) + icon slot (22) + gap (4): where the label starts. */
+const LABEL_INSET = 34;
 
 function useStore(store: ActivityStore): number {
   return useSyncExternalStore(store.subscribe, store.getVersion, store.getVersion);
@@ -65,12 +80,13 @@ function stringify(value: unknown): string {
   }
 }
 
-/** Output shown under a tool call's title, or null when there is nothing to add. */
+/** Output shown when a tool call is opened, or null when there is nothing to add. */
 export function toolBody(item: ToolItem): string | null {
   const detail = item.detail;
   const parts: string[] = [];
   switch (detail.type) {
     case "shell":
+      parts.push(`$ ${detail.command}`);
       if (detail.output) parts.push(clip(detail.output, true));
       if (detail.exitCode !== undefined && detail.exitCode !== null && detail.exitCode !== 0) {
         parts.push(`exit ${detail.exitCode}`);
@@ -120,207 +136,314 @@ export function toolBody(item: ToolItem): string | null {
     }
   }
   if (item.status === "failed" && item.error !== null && item.error !== undefined) {
-    parts.push(`Error: ${clip(stringify(item.error))}`);
+    parts.push(clip(stringify(item.error)));
   }
   const body = parts.join("\n\n").trim();
   return body ? body : null;
 }
 
-function styles(colors: Colors) {
-  return {
-    card: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
-      backgroundColor: colors.surface1,
-      overflow: "hidden",
-    } as ViewStyle,
-    header: { paddingHorizontal: 10, paddingVertical: 7, gap: 2 } as ViewStyle,
-    headerLine: { flexDirection: "row", alignItems: "center", gap: 6 } as ViewStyle,
-    summary: { color: colors.foreground, fontSize: 13, fontWeight: "500", flexShrink: 1 } as TextStyle,
-    live: { color: colors.accent, fontSize: 11 } as TextStyle,
-    failed: { color: colors.statusDanger, fontSize: 12 } as TextStyle,
-    preview: { color: colors.foregroundMuted, fontSize: 12, marginLeft: 18 } as TextStyle,
-    body: {
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      gap: 10,
-    } as ViewStyle,
-    label: { color: colors.foregroundMuted, fontSize: 11, fontWeight: "600", letterSpacing: 0.4 } as TextStyle,
-    thinking: { color: colors.foregroundMuted, fontSize: 13, lineHeight: 19 } as TextStyle,
-    toolTitle: { color: colors.foreground, fontSize: 12, fontFamily: MONO, flexShrink: 1 } as TextStyle,
-    toolBox: {
-      maxHeight: 240,
-      borderRadius: 6,
-      backgroundColor: colors.surface0,
-      borderWidth: 1,
-      borderColor: colors.border,
-    } as ViewStyle,
-    toolBody: { color: colors.foregroundMuted, fontSize: 11, lineHeight: 16, fontFamily: MONO, padding: 8 } as TextStyle,
-    muted: { color: colors.foregroundMuted, fontSize: 12 } as TextStyle,
+// ---- badge ------------------------------------------------------------------
+
+interface BadgeProps {
+  colors: Colors;
+  icon: string;
+  label: string;
+  secondaryLabel?: string;
+  expanded: boolean;
+  loading?: boolean;
+  error?: boolean;
+  onToggle?: () => void;
+  /** Detail content under the header, drawn only while expanded. */
+  details?: ReactNode;
+  /** Attach a bordered box under the header (tool output), or not (group, thinking). */
+  borderlessWhenExpanded?: boolean;
+  spacing?: "sequence" | "none";
+  /** Stay grey and untinted while expanded (thinking is open by default). */
+  quiet?: boolean;
+  testID?: string;
+}
+
+function Badge(props: BadgeProps) {
+  const { colors, expanded, loading = false, error = false, onToggle, borderlessWhenExpanded = false } = props;
+  const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const interactive = Boolean(onToggle);
+  const quiet = props.quiet ?? false;
+  const active = hovered || (expanded && !quiet);
+  const showChevron = interactive && active;
+
+  const labelColor = loading || active ? colors.foreground : colors.foregroundMuted;
+  const labelStyle: TextStyle = {
+    color: labelColor,
+    opacity: loading && !active ? 0.72 : 1,
+    fontSize: 14,
+    fontWeight: "400",
+    flexShrink: 0,
   };
-}
+  const secondaryStyle: TextStyle = {
+    flexShrink: 1,
+    minWidth: 0,
+    color: active ? colors.foreground : colors.foregroundMuted,
+    fontSize: 14,
+    fontWeight: "400",
+    marginLeft: 8,
+  };
+  const headerStyle: ViewStyle = {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "transparent",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    overflow: "hidden",
+    ...(pressed && interactive ? { opacity: 0.9 } : null),
+    ...(expanded && !quiet ? { backgroundColor: colors.surface1 } : null),
+    ...(expanded && !borderlessWhenExpanded && props.details
+      ? { borderColor: colors.border, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }
+      : null),
+  };
+  const detailStyle: ViewStyle = borderlessWhenExpanded
+    ? { minWidth: 0, flexShrink: 1 }
+    : {
+        borderBottomLeftRadius: 8,
+        borderBottomRightRadius: 8,
+        borderWidth: 1,
+        borderTopWidth: 0,
+        borderColor: colors.border,
+        overflow: "hidden",
+        minWidth: 0,
+        flexShrink: 1,
+      };
 
-function statusColor(item: ToolItem, colors: Colors): string {
-  switch (item.status) {
-    case "running":
-      return colors.accent;
-    case "failed":
-      return colors.statusDanger;
-    case "canceled":
-      return colors.foregroundMuted;
-    default:
-      return colors.statusSuccess;
-  }
-}
-
-// Shapes are drawn with views: icon glyphs are missing from some app fonts.
-function Dot({ color, hollow = false }: { color: string; hollow?: boolean }) {
-  return (
-    <View style={{ width: 12, alignItems: "center" }}>
-      <View
-        style={{
-          width: 7,
-          height: 7,
-          borderRadius: 4,
-          backgroundColor: hollow ? "transparent" : color,
-          borderWidth: hollow ? 1 : 0,
-          borderColor: color,
-        }}
-      />
-    </View>
-  );
-}
-
-function Chevron({ expanded, color }: { expanded: boolean; color: string }) {
-  return (
-    <View style={{ width: 12, height: 12, alignItems: "center", justifyContent: "center" }}>
-      <View
-        style={{
-          width: 6,
-          height: 6,
-          borderRightWidth: 1.5,
-          borderBottomWidth: 1.5,
-          borderColor: color,
-          transform: [{ rotate: expanded ? "45deg" : "-45deg" }],
-          marginTop: expanded ? -3 : 0,
-          marginLeft: expanded ? 0 : -2,
-        }}
-      />
-    </View>
-  );
-}
-
-function ThinkingView({ text, open, colors }: { text: string; open: boolean; colors: Colors }) {
-  const s = styles(colors);
-  return (
-    <View style={{ gap: 3 }}>
-      <Text style={s.label}>{open ? "THINKING…" : "THINKING"}</Text>
-      <Text style={s.thinking} selectable>
-        {text.trim()}
-      </Text>
-    </View>
-  );
-}
-
-function ToolView({ item, colors }: { item: ToolItem; colors: Colors }) {
-  const s = styles(colors);
-  const body = toolBody(item);
-  return (
-    <View style={{ gap: 4 }}>
-      <View style={s.headerLine}>
-        <Dot color={statusColor(item, colors)} hollow={item.status === "canceled"} />
-        <Text style={s.toolTitle} selectable>
-          {describeTool(item)}
-        </Text>
+  let iconNode: ReactNode;
+  if (showChevron) {
+    iconNode = (
+      <View style={{ transform: [{ scale: 1.3 }, ...(expanded ? [{ rotate: "90deg" }] : [])], marginLeft: -1 }}>
+        <Icon name="ChevronRight" size={12} color={colors.foreground} />
       </View>
-      {body ? (
-        <ScrollView style={s.toolBox} nestedScrollEnabled>
-          <Text style={s.toolBody} selectable>
-            {body}
-          </Text>
-        </ScrollView>
-      ) : null}
+    );
+  } else if (error) {
+    iconNode = <Icon name="TriangleAlert" size={12} color={colors.statusDanger} />;
+  } else {
+    iconNode = <Icon name={props.icon} size={12} color={active ? colors.foreground : colors.foregroundMuted} />;
+  }
+
+  return (
+    <View
+      testID={props.testID}
+      style={{ marginHorizontal: -13, marginBottom: props.spacing === "sequence" ? 4 : 0 }}
+    >
+      <Pressable
+        accessibilityRole={interactive ? "button" : undefined}
+        accessibilityState={interactive ? { expanded } : undefined}
+        disabled={!interactive}
+        onPress={onToggle}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        onHoverIn={isWeb ? () => setHovered(true) : undefined}
+        onHoverOut={
+          isWeb
+            ? () => {
+                setHovered(false);
+                setPressed(false);
+              }
+            : undefined
+        }
+        style={headerStyle}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View style={{ width: 22, height: 22, alignItems: "center", justifyContent: "center", marginRight: 4 }}>
+            {iconNode}
+          </View>
+          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", overflow: "hidden" }}>
+            <Text style={labelStyle} numberOfLines={1}>
+              {props.label}
+            </Text>
+            {props.secondaryLabel ? (
+              <Text style={secondaryStyle} numberOfLines={1}>
+                {props.secondaryLabel}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      </Pressable>
+      {expanded && props.details ? <View style={detailStyle}>{props.details}</View> : null}
     </View>
   );
 }
 
-function MemberView({ member, colors }: { member: Member; colors: Colors }) {
-  if (member.kind === "reasoning") return <ThinkingView text={member.text} open={member.open} colors={colors} />;
-  return <ToolView item={member.item} colors={colors} />;
+// ---- members ----------------------------------------------------------------
+
+function firstLine(text: string): string {
+  return text.trim().split("\n").find((line) => line.trim())?.trim() ?? "";
 }
 
-function RunBody({ members, colors }: { members: readonly Member[]; colors: Colors }) {
-  const s = styles(colors);
+function ThinkingRow({ text, open, colors }: { text: string; open: boolean; colors: Colors }) {
+  // Thinking opens with its run: the point of the row is seeing the reasoning.
+  const [expanded, setExpanded] = useState(true);
+  const trimmed = text.trim();
+  return (
+    <Badge
+      colors={colors}
+      icon="Brain"
+      label="Thinking"
+      secondaryLabel={expanded ? undefined : firstLine(trimmed)}
+      expanded={expanded}
+      loading={open}
+      onToggle={() => setExpanded((value) => !value)}
+      borderlessWhenExpanded
+      quiet
+      spacing="sequence"
+      details={
+        <Text
+          selectable
+          style={{
+            color: colors.foregroundMuted,
+            fontSize: 14,
+            lineHeight: 21,
+            paddingLeft: LABEL_INSET,
+            paddingRight: 8,
+            paddingTop: 2,
+            paddingBottom: 6,
+          }}
+        >
+          {trimmed}
+        </Text>
+      }
+    />
+  );
+}
+
+function ToolRow({ item, cwd, colors }: { item: ToolItem; cwd?: string; colors: Colors }) {
+  const [expanded, setExpanded] = useState(false);
+  const display = toolDisplay(item, cwd);
+  const body = expanded ? toolBody(item) : null;
+  return (
+    <Badge
+      colors={colors}
+      icon={toolIconName(item)}
+      label={display.displayName}
+      secondaryLabel={display.summary ? firstLine(display.summary) : undefined}
+      expanded={expanded}
+      loading={item.status === "running"}
+      error={item.status === "failed"}
+      onToggle={() => setExpanded((value) => !value)}
+      spacing="sequence"
+      details={
+        body ? (
+          <ScrollView style={{ maxHeight: DETAIL_MAX_HEIGHT, backgroundColor: colors.surface1 }} nestedScrollEnabled>
+            <Text
+              selectable
+              style={{ color: colors.foregroundMuted, fontFamily: MONO, fontSize: 12, lineHeight: 18, padding: 12 }}
+            >
+              {body}
+            </Text>
+          </ScrollView>
+        ) : (
+          <Text style={{ color: colors.foregroundMuted, fontSize: 12, padding: 12 }}>No additional details available</Text>
+        )
+      }
+    />
+  );
+}
+
+function MemberRow({ member, cwd, colors }: { member: Member; cwd?: string; colors: Colors }) {
+  if (member.kind === "reasoning") return <ThinkingRow text={member.text} open={member.open} colors={colors} />;
+  return <ToolRow item={member.item} cwd={cwd} colors={colors} />;
+}
+
+function RunMembers({ members, cwd, colors }: { members: readonly Member[]; cwd?: string; colors: Colors }) {
   const [toolLimit, setToolLimit] = useState(VISIBLE_TOOL_CALLS);
   const { shown, hiddenTools } = visibleMembers(members, toolLimit);
   return (
-    <View style={s.body}>
+    <>
       {hiddenTools > 0 ? (
         <Pressable accessibilityRole="button" onPress={() => setToolLimit((limit) => limit + MORE_TOOL_CALLS)}>
-          <Text style={[s.muted, { color: colors.accent }]}>
-            Show {Math.min(hiddenTools, MORE_TOOL_CALLS)} earlier tool calls ({hiddenTools} hidden; all thinking is shown)
+          <Text style={{ color: colors.foregroundMuted, fontSize: 12, paddingVertical: 4 }}>
+            Show {Math.min(hiddenTools, MORE_TOOL_CALLS)} earlier tool calls ({hiddenTools} hidden)
           </Text>
         </Pressable>
       ) : null}
       {shown.map((member) => (
-        <MemberView key={member.key} member={member} colors={colors} />
+        <MemberRow key={member.key} member={member} cwd={cwd} colors={colors} />
       ))}
-    </View>
+    </>
   );
 }
 
-export function GroupRow(props: { store: ActivityStore; agentId: string; runId: string; theme: PluginTheme }) {
-  const { store, agentId, runId } = props;
+// ---- rows the plugin registers ------------------------------------------------
+
+export function GroupRow(props: {
+  store: ActivityStore;
+  agentId: string;
+  runId: string;
+  theme: PluginTheme;
+  compact: boolean;
+}) {
+  const { store, agentId, runId, compact } = props;
   const colors = props.theme.colors;
   useStore(store);
   useEffect(() => store.ensure(agentId), [store, agentId]);
+  const cwd = useAgent(agentId, (agent) => agent.cwd) ?? undefined;
   const run = store.getRun(agentId, runId);
-  const s = styles(colors);
   if (!run) {
-    return (
-      <View style={[s.card, s.header]}>
-        <Text style={s.muted}>Loading activity…</Text>
-      </View>
-    );
+    return <Badge colors={colors} icon="Wrench" label="Loading activity…" expanded={false} />;
   }
   const expanded = store.isExpanded(runId);
   const summary = summarizeRun(run);
-  const latest = describeLatest(run);
+  const label = describeSummary(summary);
+  // Like Paseo's loading badges, a live run names what it is doing right now.
+  const latest = summary.running ? (describeLatest(run) ?? undefined) : undefined;
+  const toggle = () => store.toggle(runId);
+
+  if (compact) {
+    return (
+      <>
+        <Badge
+          colors={colors}
+          icon="Wrench"
+          label={label}
+          secondaryLabel={latest}
+          expanded={false}
+          loading={summary.running}
+          error={summary.failedCount > 0 && !summary.running}
+          onToggle={toggle}
+          testID="activity-group"
+        />
+        <Modal title={label} open={expanded} onOpenChange={(open) => (open ? undefined : store.toggle(runId))}>
+          <Modal.Content contentContainerStyle={{ paddingHorizontal: 13, paddingVertical: 12, gap: 0 }}>
+            <RunMembers members={run.members} cwd={cwd} colors={colors} />
+          </Modal.Content>
+        </Modal>
+      </>
+    );
+  }
+
   return (
-    <View style={s.card}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded }}
-        accessibilityLabel={`${describeSummary(summary)}. ${expanded ? "Collapse" : "Expand"} activity`}
-        onPress={() => store.toggle(runId)}
-        style={s.header}
-      >
-        <View style={s.headerLine}>
-          <Chevron expanded={expanded} color={colors.foregroundMuted} />
-          <Text style={s.summary}>{describeSummary(summary)}</Text>
-          {summary.failedCount > 0 ? <Text style={s.failed}>{summary.failedCount} failed</Text> : null}
-          {summary.running ? (
-            <View style={s.headerLine}>
-              <Dot color={colors.accent} />
-              <Text style={s.live}>working</Text>
-            </View>
-          ) : null}
-        </View>
-        {!expanded && latest ? (
-          <Text style={s.preview} numberOfLines={1}>
-            {latest}
-          </Text>
-        ) : null}
-      </Pressable>
-      {expanded ? <RunBody members={run.members} colors={colors} /> : null}
-    </View>
+    <Badge
+      colors={colors}
+      icon="Wrench"
+      label={label}
+      secondaryLabel={expanded ? undefined : latest}
+      expanded={expanded}
+      loading={summary.running}
+      error={summary.failedCount > 0 && !summary.running}
+      onToggle={toggle}
+      borderlessWhenExpanded
+      testID="activity-group"
+      details={
+        <ScrollView
+          style={{ maxHeight: GROUP_MAX_HEIGHT }}
+          contentContainerStyle={{ paddingTop: 4, paddingHorizontal: 13 }}
+          nestedScrollEnabled
+        >
+          <RunMembers members={run.members} cwd={cwd} colors={colors} />
+        </ScrollView>
+      }
+    />
   );
 }
 
-/** An item the plugin could not place in a run yet. Drawn on its own, never hidden. */
+/** An item the plugin could not place in a run yet. Drawn like Paseo's own row, never hidden. */
 export function ItemRow(props: { store: ActivityStore; agentId: string; item: AgentTimelineItem; theme: PluginTheme }) {
   const { store, agentId, item } = props;
   const colors = props.theme.colors;
@@ -329,9 +452,8 @@ export function ItemRow(props: { store: ActivityStore; agentId: string; item: Ag
   useEffect(() => {
     if (store.status(agentId) === "ready" && !store.knows(agentId, item)) store.loadOlder(agentId);
   }, [store, agentId, item, version]);
-  const s = styles(colors);
-  let content = null;
-  if (item.type === "reasoning") content = <ThinkingView text={item.text} open={false} colors={colors} />;
-  else if (item.type === "tool_call") content = <ToolView item={item} colors={colors} />;
-  return <View style={[s.card, s.body, { borderTopWidth: 0 }]}>{content}</View>;
+  const cwd = useAgent(agentId, (agent) => agent.cwd) ?? undefined;
+  if (item.type === "reasoning") return <ThinkingRow text={item.text} open={false} colors={colors} />;
+  if (item.type === "tool_call") return <ToolRow item={item} cwd={cwd} colors={colors} />;
+  return null;
 }
