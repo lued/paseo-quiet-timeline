@@ -1,37 +1,29 @@
 # Quiet timeline
 
-Groups each run of thinking and tool calls into one row, so a long agent run reads
-as the assistant's messages with one activity row between them.
+Quiet timeline is a Paseo plugin that folds each run of thinking and tool calls
+into one grey activity row, so a long agent turn reads as the assistant's
+messages with a single line of activity between them.
 
-- **Collapsed**, it is a plain grey line drawn like Paseo's own tool call rows, and
-  it names the thinking: "Thought 2 times, ran 3 commands, and read 1 file". While
-  the agent works, the line also shows the latest thinking or tool call.
-- **One tap** opens the run in order, inline on desktop and in a sheet on phones,
-  the way Paseo's Summary groups open. Thinking shows as grey text; each tool call
-  is a grey line you can tap for its output. Runs with more than 60 tool calls show
-  the newest 60 first, with a button for earlier ones. Every thinking block is
-  always shown.
+Collapsed, the row is drawn like Paseo's own tool call rows and summarises the
+run, for example "Thought 2 times, ran 3 commands, and read 1 file". While the
+agent works, it also shows the latest thought or tool call. One tap opens the run
+in order: inline on a wide window, in a sheet on a phone. Thinking is shown as
+grey text and expanded by default. Each tool call is a grey row that opens its
+output.
 
-Messages, todo lists, errors, plan approvals and `speak` calls end a run, as they
-do in Paseo's own Summary display.
+A run keeps every thinking block and the newest 60 tool calls. A button reveals
+earlier calls 200 at a time, so very long runs stay responsive. A run ends at an
+assistant message, todo list, error, plan approval, `speak` call, or another
+plugin's card, and those items stay separate.
 
-## How it works
+The plugin only changes what the client draws. It keeps a read-only mirror of
+the open agent's timeline and never writes agent data or stored history, so
+disabling it restores Paseo's own rows. If the mirror is still loading or fails,
+items are drawn individually and nothing is hidden.
 
-Paseo's Summary groups stop at the first reasoning item and only list tool calls,
-so the plugin draws the whole run itself. It keeps a read-only mirror of each open
-agent's timeline over the plugin API, and decides for each reasoning or tool call
-item whether to draw the run's row, hide the item because that row already shows
-it, or draw the item on its own.
+Tool output inside an expanded group is plain monospace text, not Paseo's native
+code and diff viewer. The 0.12 plugin SDK lets a plugin render only its own
+timeline item kinds and does not export the built-in tool row, so the native
+viewer cannot be embedded in a plugin group.
 
-Nothing is dropped without being drawn. Until an agent's mirror has loaded, or if
-it fails, items are drawn on their own, so thinking stays visible.
-
-The plugin only changes what the client draws. It never writes agent data, and it
-does not alter stored history: disabling it brings back Paseo's own rows.
-
-## Checks
-
-- `npm run typecheck` and `npm test`: grouping, live updates, older history, and
-  the rule that every hidden item belongs to a drawn row.
-- In Paseo, a turn with thinking and tool calls shows one row per run whose summary
-  starts with "Thought", and tapping it shows the thinking text and each call.
+Requires Paseo 0.12.0 or newer. No accounts, keys, or extra packages are needed.

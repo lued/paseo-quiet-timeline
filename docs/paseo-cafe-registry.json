@@ -1,0 +1,8 @@
+{
+  "repo": "lued/paseo-quiet-timeline",
+  "categories": ["productivity"],
+  "caveats": [
+    "Tool output inside an expanded group is plain text, not Paseo's syntax-highlighted code or diff viewer."
+  ],
+  "submittedBy": "lued"
+}

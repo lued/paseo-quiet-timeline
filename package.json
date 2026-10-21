@@ -1,21 +1,44 @@
 {
   "name": "paseo-quiet-timeline",
-  "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "private": false,
+  "description": "A Paseo plugin that groups each run of thinking and tool calls into one quiet, collapsible row.",
+  "license": "MIT",
+  "author": "lued",
+  "type": "module",
+  "homepage": "https://github.com/lued/paseo-quiet-timeline#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lued/paseo-quiet-timeline.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lued/paseo-quiet-timeline/issues"
+  },
+  "keywords": [
+    "paseo",
+    "paseo-plugin",
+    "timeline",
+    "thinking",
+    "tool-calls",
+    "productivity"
+  ],
   "files": [
     "paseo-plugin.json",
     "OVERVIEW.md",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
     "index.client.ts",
     "index.client.tsx",
-    "index.server.ts",
-    "index.server.tsx",
     "client/",
-    "server/",
     "shared/"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts"
+  },
+  "engines": {
+    "node": ">=22.18.0"
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.12.0",
