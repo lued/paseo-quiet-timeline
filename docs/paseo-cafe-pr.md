@@ -25,7 +25,7 @@ cd paseo-cafe
 git checkout -b add-paseo-quiet-timeline
 
 # 3. Add exactly one registry file.
-cp /home/xander/git/paseo-quiet-timeline/docs/paseo-cafe-registry.json registry/paseo-quiet-timeline.json
+cp ~/git/paseo-quiet-timeline/docs/paseo-cafe-registry.json registry/paseo-quiet-timeline.json
 
 # 4. Validate and commit.
 bun install
@@ -40,7 +40,7 @@ gh pr create \
   --base main \
   --head add-paseo-quiet-timeline \
   --title "Add paseo-quiet-timeline" \
-  --body-file /home/xander/git/paseo-quiet-timeline/docs/paseo-cafe-pr-body.md
+  --body-file ~/git/paseo-quiet-timeline/docs/paseo-cafe-pr-body.md
 ```
 
 If `bun` is unavailable, the same check runs in the registry CI on the PR.

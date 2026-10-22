@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- Add `SECURITY.md`: supported versions, private vulnerability reporting, the trust model
+  (a trusted, unsandboxed Paseo plugin running as the daemon user) and the out-of-scope list.
+- Remove absolute home paths, a machine name and internal workspace paths from the docs and
+  test fixtures. Tests use a neutral `/home/dev` path; behaviour is unchanged.
+
 ## [0.1.0] - 2026-10-21
 
 First public release.
