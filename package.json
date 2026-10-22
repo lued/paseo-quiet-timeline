@@ -2,7 +2,7 @@
   "name": "paseo-quiet-timeline",
   "version": "0.1.0",
   "private": false,
-  "description": "A Paseo plugin that groups each run of thinking and tool calls into one quiet, collapsible row.",
+  "description": "Groups each run of thinking and tool calls into one quiet, collapsible row.",
   "license": "MIT",
   "author": "lued",
   "type": "module",
